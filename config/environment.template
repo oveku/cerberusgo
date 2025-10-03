@@ -1,0 +1,41 @@
+# Environment Variables for Framebuffer Applications
+# Location: /etc/environment or ~/.bashrc
+#
+# Add these to configure applications to use the PiTFT display
+
+# SDL (Simple DirectMedia Layer) Configuration
+SDL_FBDEV=/dev/fb1
+SDL_VIDEODRIVER=fbcon
+SDL_AUDIODRIVER=alsa
+
+# Framebuffer device for general use
+FRAMEBUFFER=/dev/fb1
+
+# For pygame and other SDL-based applications
+export SDL_FBDEV=/dev/fb1
+export SDL_VIDEODRIVER=fbcon
+export FRAMEBUFFER=/dev/fb1
+
+# Mouse/Touch device
+export SDL_MOUSEDRV=TSLIB
+export SDL_MOUSEDEV=/dev/input/touchscreen
+
+# TSLib (Touchscreen Library) Configuration
+export TSLIB_FBDEVICE=/dev/fb1
+export TSLIB_TSDEVICE=/dev/input/event0
+export TSLIB_CALIBFILE=/etc/pointercal
+export TSLIB_CONFFILE=/etc/ts.conf
+export TSLIB_PLUGINDIR=/usr/lib/ts
+
+# Usage:
+# Add these lines to:
+# 1. /etc/environment (system-wide)
+# 2. ~/.bashrc (user-specific)
+# 3. Application start script
+# 4. systemd service file
+
+# Example in Python script:
+# import os
+# os.environ['FRAMEBUFFER'] = '/dev/fb1'
+# os.environ['SDL_FBDEV'] = '/dev/fb1'
+# os.environ['SDL_VIDEODRIVER'] = 'fbcon'

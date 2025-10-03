@@ -1,0 +1,102 @@
+# .gitignore for CerberusGo Project
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*~
+
+# Logs
+*.log
+logs/
+/tmp/
+
+# Local configuration (user-specific)
+local_config.py
+config.local.py
+.env
+.env.local
+.env.production
+.env.development
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+authorized_keys
+
+# Backup files
+backup/
+*.zip
+*.tar.gz
+
+# User-specific PowerShell profile paths
+*profile.ps1
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test output
+test-results/
+coverage/
+
+# Local/Private files with network info and local paths
+NETWORK_SCAN.md
+AGENT_INSTRUCTIONS.md
+CERBERUSGO_CONTEXT.md
+OLLAMA_INTEGRATION.md
+LLM_SETUP_SUMMARY.md
+connect-cerberusgo.ps1
+powershell-profile-function.ps1
+README_GITHUB.md
+CLOCK_WEATHER_DEPLOYED.md
+CONFIGURATION_COMPLETE.md
+DISPLAY_WORKING.md

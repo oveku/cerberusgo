@@ -1,0 +1,50 @@
+# Boot Command Line Configuration Template
+# Location: /boot/cmdline.txt
+#
+# This is a single-line file - do not add line breaks!
+# Copy this file to /boot/cmdline.txt on your Raspberry Pi
+
+# Standard configuration with console on PiTFT:
+console=serial0,115200 console=tty1 root=PARTUUID=your-partuuid rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait fbcon=map:10 fbcon=font:VGA8x8 logo.nologo quiet
+
+# Explanation of parameters:
+# console=serial0,115200   - Serial console on GPIO UART
+# console=tty1             - Primary console on tty1
+# root=PARTUUID=...        - Root filesystem partition (auto-generated)
+# rootfstype=ext4          - Root filesystem type
+# elevator=deadline        - I/O scheduler
+# fsck.repair=yes          - Automatically repair filesystem errors
+# rootwait                 - Wait for root device to appear
+# fbcon=map:10             - Map console to fb1 (PiTFT)
+# fbcon=font:VGA8x8        - Use smaller font for more text on screen
+# logo.nologo              - Disable kernel logo
+# quiet                    - Reduce boot messages
+
+# Alternative configurations:
+
+# Console on HDMI only (not PiTFT):
+# console=serial0,115200 console=tty1 root=PARTUUID=your-partuuid rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait quiet
+
+# Console on both HDMI and PiTFT:
+# console=serial0,115200 console=tty1 root=PARTUUID=your-partuuid rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait fbcon=map:10
+
+# Verbose boot (show all messages):
+# console=serial0,115200 console=tty1 root=PARTUUID=your-partuuid rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait fbcon=map:10 fbcon=font:VGA8x8
+
+# Silent boot (minimal messages):
+# console=serial0,115200 console=tty1 root=PARTUUID=your-partuuid rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait fbcon=map:10 fbcon=font:VGA8x8 logo.nologo quiet loglevel=0
+
+# Font options:
+# VGA8x8   - Small font, more text (recommended for 3.5" display)
+# VGA8x16  - Medium font
+# TER16x32 - Large font, less text
+
+# Framebuffer console mapping:
+# fbcon=map:10  - Console to fb1 (PiTFT)
+# fbcon=map:01  - Console to fb0 (HDMI)
+# fbcon=map:11  - Console to both displays
+
+# Additional useful parameters:
+# plymouth.ignore-serial-consoles  - Disable serial console for Plymouth
+# vt.global_cursor_default=0       - Disable cursor
+# loglevel=3                       - Reduce kernel log verbosity

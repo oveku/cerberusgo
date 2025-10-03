@@ -1,0 +1,125 @@
+# Boot Configuration Template for Raspberry Pi 3B with PiTFT 3.5"
+# Location: /boot/config.txt
+# 
+# Copy this file to /boot/config.txt on your Raspberry Pi
+# Adjust settings as needed for your specific setup
+
+# For more options and information see
+# http://rpf.io/configtxt
+# Some settings may impact device functionality. See link above for details
+
+#############################################
+# Standard Raspberry Pi 3B Configuration
+#############################################
+
+# Uncomment some or all of these to enable the optional hardware interfaces
+dtparam=i2c_arm=on
+#dtparam=i2s=on
+dtparam=spi=on
+
+# Enable audio (loads snd_bcm2835)
+dtparam=audio=on
+
+#############################################
+# Display Configuration
+#############################################
+
+# Adafruit PiTFT 3.5" Resistive Touchscreen
+# Choose one rotation option below:
+
+# Landscape mode (USB ports on right) - RECOMMENDED
+dtoverlay=pitft35-resistive,rotate=90,speed=32000000,fps=30
+
+# Portrait mode (USB ports on bottom)
+#dtoverlay=pitft35-resistive,rotate=0,speed=32000000,fps=30
+
+# Landscape inverted (USB ports on left)
+#dtoverlay=pitft35-resistive,rotate=270,speed=32000000,fps=30
+
+# Portrait inverted (USB ports on top)
+#dtoverlay=pitft35-resistive,rotate=180,speed=32000000,fps=30
+
+# Performance tuning options:
+# - speed: SPI clock speed in Hz (16000000-48000000)
+#   Lower = more stable, Higher = faster updates
+# - fps: Target frame rate (20-30 typical)
+#   Lower = less CPU usage, Higher = smoother updates
+
+#############################################
+# HDMI Configuration
+#############################################
+
+# Uncomment if using HDMI alongside PiTFT
+# Force HDMI mode (don't detect)
+#hdmi_force_hotplug=1
+
+# Uncomment to force a specific HDMI mode
+#hdmi_group=1
+#hdmi_mode=16
+
+# Uncomment to force a console size. By default it will be display's size minus
+# overscan.
+#framebuffer_width=1280
+#framebuffer_height=720
+
+#############################################
+# GPU Memory Configuration
+#############################################
+
+# GPU memory in megabytes
+# If only using PiTFT (no HDMI), can reduce to save RAM
+gpu_mem=64
+
+# If not using HDMI at all, can reduce further:
+#gpu_mem=16
+
+#############################################
+# Performance/Overclocking
+#############################################
+
+# Uncomment to overclock the arm. 700 MHz is the default.
+# Overclocking voids warranty and may cause instability
+#arm_freq=1300
+#core_freq=500
+#sdram_freq=500
+#over_voltage=4
+
+# Measure temperature: vcgencmd measure_temp
+# Check throttling: vcgencmd get_throttled
+
+#############################################
+# Additional Options
+#############################################
+
+# Uncomment this to enable infrared communication.
+#dtoverlay=gpio-ir,gpio_pin=17
+#dtoverlay=gpio-ir-tx,gpio_pin=18
+
+# Additional overlays and parameters are documented /boot/overlays/README
+
+# Enable DRM VC4 V3D driver (not recommended with fbtft)
+#dtoverlay=vc4-fkms-v3d
+#max_framebuffers=2
+
+#############################################
+# Power Management
+#############################################
+
+# Disable WiFi
+#dtoverlay=disable-wifi
+
+# Disable Bluetooth
+#dtoverlay=disable-bt
+
+#############################################
+# Boot Behavior
+#############################################
+
+# Disable the rainbow splash screen
+disable_splash=1
+
+# Enable UART (serial console)
+#enable_uart=1
+
+# Boot options
+boot_delay=0
