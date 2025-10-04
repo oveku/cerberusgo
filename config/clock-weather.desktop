@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Clock and Weather Display
-Exec=/usr/bin/python3 /home/pi/clock_weather.py
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true

@@ -1,17 +1,36 @@
 [Unit]
 Description=Clock and Weather Display on PiTFT (FBI)
-After=network-online.target
+After=network-online.target multi-user.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/clock_weather_fbi.py
+ExecStart=/home/pi/start-clock-weather-fbi.sh
 Restart=always
-RestartSec=5
+RestartSec=15
+TimeoutStartSec=45
+TimeoutStopSec=20
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Resource limits to prevent runaway processes
+MemoryMax=256M
+CPUQuota=30%
+
+# Watchdog to detect hangs
+WatchdogSec=180
+
+# Environment for framebuffer access
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=clock-weather-fbi
 
 [Install]
 WantedBy=multi-user.target

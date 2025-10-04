@@ -1,0 +1,24 @@
+[Unit]
+Description=CerberusGo System Monitor
+After=multi-user.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi
+ExecStart=/home/pi/monitor-cerberusgo.sh
+Restart=always
+RestartSec=30
+TimeoutStopSec=10
+
+# Resource limits for the monitor itself
+MemoryMax=64M
+CPUQuota=10%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cerberusgo-monitor
+
+[Install]
+WantedBy=multi-user.target
