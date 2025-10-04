@@ -44,7 +44,8 @@ MAX_WEATHER_FAILURES = 5
 # Display configuration
 WEATHER_DISPLAY_TIME = 20  # seconds
 ADVISOR_DISPLAY_TIME = 10  # seconds
-TOTAL_CYCLE_TIME = WEATHER_DISPLAY_TIME + ADVISOR_DISPLAY_TIME
+FORECAST_DISPLAY_TIME = 10  # seconds
+TOTAL_CYCLE_TIME = WEATHER_DISPLAY_TIME + ADVISOR_DISPLAY_TIME + FORECAST_DISPLAY_TIME
 
 # Joke API configuration
 JOKE_API_URL = "https://official-joke-api.appspot.com/random_joke"
@@ -248,7 +249,7 @@ def fetch_weather():
                 'current': ('temperature_2m,relative_humidity_2m,'
                            'wind_speed_10m,weather_code'),
                 'hourly': ('temperature_2m,precipitation_probability,'
-                          'weather_code'),
+                          'wind_speed_10m,weather_code'),
                 'forecast_days': 1,
                 'timezone': 'Europe/Oslo'
             },
@@ -287,7 +288,8 @@ def fetch_weather():
             'humidity': f"{current.get('relative_humidity_2m', '--')}",
             'wind_speed': f"{wind_ms}",
             'last_update': datetime.now().strftime("%H:%M"),
-            'forecast': forecast_analysis
+            'forecast': forecast_analysis,
+            'hourly_raw': hourly  # Store raw hourly data for forecast screen
         }
         
         # Reset failure counter and update timestamp
@@ -553,6 +555,115 @@ def create_advisor_image():
     return img
 
 
+def create_forecast_image():
+    """Create the 24-hour forecast display image with split layout"""
+    img = Image.new('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+        font_text = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
+    except:
+        font_title = font_text = font_small = font_tiny = ImageFont.load_default()
+    
+    y = 15
+    
+    # Title
+    title = "24-Hour Forecast"
+    bbox = draw.textbbox((0, 0), title, font=font_title)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, y), title, font=font_title, fill=ACCENT_COLOR)
+    y += bbox[3] - bbox[1] + 15
+    
+    # Separator
+    draw.line([(20, y), (SCREEN_WIDTH - 20, y)], fill=ACCENT_COLOR, width=1)
+    y += 15
+    
+    # Get forecast data
+    hourly_data = weather_data.get('hourly_raw', {})
+    if not hourly_data:
+        # Show error message
+        error_msg = "Forecast data unavailable"
+        bbox = draw.textbbox((0, 0), error_msg, font=font_text)
+        x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y + 50), error_msg, font=font_text, fill=(150, 150, 150))
+        return img
+    
+    # Split screen setup
+    left_width = SCREEN_WIDTH // 2 - 10  # Leave 10px margin
+    right_x = SCREEN_WIDTH // 2 + 5
+    right_width = SCREEN_WIDTH // 2 - 15
+    
+    # Left side: Temperature forecast
+    left_y = y
+    temp_title = "Temperature °C"
+    bbox = draw.textbbox((0, 0), temp_title, font=font_text)
+    x = (left_width - (bbox[2] - bbox[0])) // 2
+    draw.text((x, left_y), temp_title, font=font_text, fill=TEXT_COLOR)
+    left_y += bbox[3] - bbox[1] + 10
+    
+    # Right side: Rain & Wind
+    right_y = y
+    weather_title = "Rain % | Wind m/s"
+    bbox = draw.textbbox((0, 0), weather_title, font=font_text)
+    x = right_x + (right_width - (bbox[2] - bbox[0])) // 2
+    draw.text((x, right_y), weather_title, font=font_text, fill=TEXT_COLOR)
+    right_y += bbox[3] - bbox[1] + 10
+    
+    # Get hourly data
+    temps = hourly_data.get('temperature_2m', [])
+    precip = hourly_data.get('precipitation_probability', [])
+    wind_speeds = hourly_data.get('wind_speed_10m', [])
+    
+    # Show next 24 hours (or available data)
+    hours_to_show = min(24, len(temps))
+    current_hour = datetime.now().hour
+    
+    for i in range(hours_to_show):
+        hour = (current_hour + i) % 24
+        
+        # Left side: Temperature
+        if i < len(temps):
+            temp_str = f"{hour:02d}h {temps[i]:4.1f}°"
+            draw.text((10, left_y), temp_str, font=font_small, fill=TEXT_COLOR)
+        
+        # Right side: Rain and Wind
+        rain_str = ""
+        wind_str = ""
+        
+        if i < len(precip):
+            rain_str = f"{precip[i]:2.0f}%"
+        
+        if i < len(wind_speeds):
+            # Convert km/h to m/s
+            wind_ms = wind_speeds[i] / 3.6
+            wind_str = f"{wind_ms:4.1f}"
+        
+        weather_str = f"{hour:02d}h {rain_str:>3} | {wind_str:>4}"
+        draw.text((right_x + 5, right_y), weather_str, font=font_small, fill=TEXT_COLOR)
+        
+        left_y += 16
+        right_y += 16
+        
+        # Stop if we run out of space
+        if left_y > SCREEN_HEIGHT - 50:
+            break
+    
+    # Vertical separator line
+    separator_x = SCREEN_WIDTH // 2
+    draw.line([(separator_x, y), (separator_x, SCREEN_HEIGHT - 30)], fill=(100, 100, 100), width=1)
+    
+    # Update info at bottom
+    update_str = f"Updated: {weather_data.get('last_update', '--')}"
+    bbox = draw.textbbox((0, 0), update_str, font=font_tiny)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, SCREEN_HEIGHT - 20), update_str, font=font_tiny, fill=(100, 100, 100))
+    
+    return img
+
+
 def display_image(img, filename='/tmp/clock_display.png'):
     """Display image using fbi with proper error handling"""
     global fbi_process
@@ -738,12 +849,18 @@ def main():
                         show_advisor_screen = False
                         logger.debug("Switching to weather display")
                     img = create_display_image()
-                else:
+                elif time_in_cycle < WEATHER_DISPLAY_TIME + ADVISOR_DISPLAY_TIME:
                     # Show advisor screen
                     if not show_advisor_screen:
                         show_advisor_screen = True
                         logger.debug("Switching to advisor display")
                     img = create_advisor_image()
+                else:
+                    # Show forecast screen
+                    if show_advisor_screen:
+                        show_advisor_screen = False
+                        logger.debug("Switching to forecast display")
+                    img = create_forecast_image()
                 
                 if not display_image(img):
                     logger.warning("Failed to display image, retrying...")
