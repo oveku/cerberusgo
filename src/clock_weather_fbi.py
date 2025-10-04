@@ -556,110 +556,165 @@ def create_advisor_image():
 
 
 def create_forecast_image():
-    """Create the 24-hour forecast display image with split layout"""
+    """Create the 24-hour forecast display with temperature graph"""
     img = Image.new('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), BG_COLOR)
     draw = ImageDraw.Draw(img)
     
     try:
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
         font_text = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
         font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
         font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 9)
     except:
         font_title = font_text = font_small = font_tiny = ImageFont.load_default()
     
-    y = 15
+    y = 10
     
     # Title
     title = "24-Hour Forecast"
     bbox = draw.textbbox((0, 0), title, font=font_title)
     x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
     draw.text((x, y), title, font=font_title, fill=ACCENT_COLOR)
-    y += bbox[3] - bbox[1] + 15
-    
-    # Separator
-    draw.line([(20, y), (SCREEN_WIDTH - 20, y)], fill=ACCENT_COLOR, width=1)
-    y += 15
+    y += bbox[3] - bbox[1] + 10
     
     # Get forecast data
     hourly_data = weather_data.get('hourly_raw', {})
     if not hourly_data:
-        # Show error message
         error_msg = "Forecast data unavailable"
         bbox = draw.textbbox((0, 0), error_msg, font=font_text)
         x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
         draw.text((x, y + 50), error_msg, font=font_text, fill=(150, 150, 150))
         return img
     
-    # Split screen setup
-    left_width = SCREEN_WIDTH // 2 - 10  # Leave 10px margin
-    right_x = SCREEN_WIDTH // 2 + 5
-    right_width = SCREEN_WIDTH // 2 - 15
-    
-    # Left side: Temperature forecast
-    left_y = y
-    temp_title = "Temperature °C"
-    bbox = draw.textbbox((0, 0), temp_title, font=font_text)
-    x = (left_width - (bbox[2] - bbox[0])) // 2
-    draw.text((x, left_y), temp_title, font=font_text, fill=TEXT_COLOR)
-    left_y += bbox[3] - bbox[1] + 10
-    
-    # Right side: Rain & Wind
-    right_y = y
-    weather_title = "Rain % | Wind m/s"
-    bbox = draw.textbbox((0, 0), weather_title, font=font_text)
-    x = right_x + (right_width - (bbox[2] - bbox[0])) // 2
-    draw.text((x, right_y), weather_title, font=font_text, fill=TEXT_COLOR)
-    right_y += bbox[3] - bbox[1] + 10
-    
     # Get hourly data
     temps = hourly_data.get('temperature_2m', [])
     precip = hourly_data.get('precipitation_probability', [])
     wind_speeds = hourly_data.get('wind_speed_10m', [])
     
-    # Show next 24 hours (or available data)
-    hours_to_show = min(24, len(temps))
-    current_hour = datetime.now().hour
+    if not temps:
+        return img
     
-    for i in range(hours_to_show):
+    # Use next 24 hours
+    hours_to_show = min(24, len(temps))
+    temps_display = temps[:hours_to_show]
+    precip_display = precip[:hours_to_show] if precip else [0] * hours_to_show
+    wind_display = wind_speeds[:hours_to_show] if wind_speeds else [0] * hours_to_show
+    
+    # Calculate temperature range
+    temp_min = min(temps_display)
+    temp_max = max(temps_display)
+    temp_range = max(temp_max - temp_min, 5)  # Minimum 5 degree range
+    
+    # Display high/low temps
+    temp_info = f"High: {temp_max:.1f}°C    Low: {temp_min:.1f}°C"
+    bbox = draw.textbbox((0, 0), temp_info, font=font_text)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, y), temp_info, font=font_text, fill=ACCENT_COLOR)
+    y += bbox[3] - bbox[1] + 10
+    
+    # Graph area setup
+    graph_top = y
+    graph_bottom = SCREEN_HEIGHT - 80
+    graph_height = graph_bottom - graph_top
+    
+    # Split screen: temperature graph (left), rain/wind (right)
+    graph_left = 15
+    graph_width = SCREEN_WIDTH // 2 - 20
+    separator_x = SCREEN_WIDTH // 2
+    right_start = separator_x + 10
+    right_width = SCREEN_WIDTH // 2 - 20
+    
+    # Draw vertical separator
+    draw.line([(separator_x, graph_top), (separator_x, graph_bottom)], 
+              fill=(80, 80, 80), width=1)
+    
+    # LEFT SIDE: Temperature Graph
+    # Draw temperature line graph
+    points = []
+    for i, temp in enumerate(temps_display):
+        x_pos = graph_left + (i * graph_width // (hours_to_show - 1))
+        # Normalize temperature to graph height
+        y_pos = graph_bottom - int(((temp - temp_min) / temp_range) * graph_height)
+        points.append((x_pos, y_pos))
+    
+    # Draw the temperature line
+    if len(points) > 1:
+        draw.line(points, fill=ACCENT_COLOR, width=2)
+    
+    # Draw points on the line
+    for i, (px, py) in enumerate(points):
+        # Draw a small circle at each point
+        draw.ellipse([px-2, py-2, px+2, py+2], fill=ACCENT_COLOR)
+        
+        # Show temperature every 4 hours
+        if i % 4 == 0:
+            temp_label = f"{temps_display[i]:.0f}°"
+            bbox = draw.textbbox((0, 0), temp_label, font=font_tiny)
+            label_x = px - (bbox[2] - bbox[0]) // 2
+            label_y = py - 15 if py > graph_top + 20 else py + 5
+            draw.text((label_x, label_y), temp_label, 
+                     font=font_tiny, fill=TEXT_COLOR)
+    
+    # Draw time labels on left (every 6 hours)
+    current_hour = datetime.now().hour
+    for i in range(0, hours_to_show, 6):
+        hour = (current_hour + i) % 24
+        hour_label = f"{hour:02d}h"
+        x_pos = graph_left + (i * graph_width // (hours_to_show - 1))
+        draw.text((x_pos - 10, graph_bottom + 3), hour_label, 
+                 font=font_tiny, fill=(150, 150, 150))
+    
+    # RIGHT SIDE: Rain and Wind bars
+    right_y = graph_top
+    
+    # Headers
+    draw.text((right_start, right_y), "Rain", font=font_small, fill=TEXT_COLOR)
+    draw.text((right_start + 60, right_y), "Wind", font=font_small, fill=TEXT_COLOR)
+    right_y += 18
+    
+    # Show hourly rain/wind (every 2-3 hours to fit)
+    step = max(2, hours_to_show // 12)  # Show ~12 entries
+    bar_height = 12
+    
+    for i in range(0, hours_to_show, step):
+        if right_y + bar_height > graph_bottom:
+            break
+            
         hour = (current_hour + i) % 24
         
-        # Left side: Temperature
-        if i < len(temps):
-            temp_str = f"{hour:02d}h {temps[i]:4.1f}°"
-            draw.text((10, left_y), temp_str, font=font_small, fill=TEXT_COLOR)
+        # Hour label
+        draw.text((right_start, right_y), f"{hour:02d}h", 
+                 font=font_tiny, fill=(150, 150, 150))
         
-        # Right side: Rain and Wind
-        rain_str = ""
-        wind_str = ""
+        # Rain bar (0-100%)
+        rain_val = precip_display[i] if i < len(precip_display) else 0
+        rain_bar_width = int((rain_val / 100) * 35)
+        if rain_bar_width > 0:
+            draw.rectangle([right_start + 28, right_y + 1, 
+                          right_start + 28 + rain_bar_width, right_y + bar_height - 1],
+                         fill=(100, 150, 255))
+        draw.text((right_start + 66, right_y), f"{rain_val:.0f}%", 
+                 font=font_tiny, fill=TEXT_COLOR)
         
-        if i < len(precip):
-            rain_str = f"{precip[i]:2.0f}%"
+        # Wind indicator (converted to m/s)
+        wind_kmh = wind_display[i] if i < len(wind_display) else 0
+        wind_ms = wind_kmh / 3.6
+        wind_bar_width = int(min(wind_ms / 15, 1) * 35)  # Max 15 m/s
+        if wind_bar_width > 0:
+            draw.rectangle([right_start + 105, right_y + 1,
+                          right_start + 105 + wind_bar_width, right_y + bar_height - 1],
+                         fill=(150, 255, 150))
+        draw.text((right_start + 143, right_y), f"{wind_ms:.1f}", 
+                 font=font_tiny, fill=TEXT_COLOR)
         
-        if i < len(wind_speeds):
-            # Convert km/h to m/s
-            wind_ms = wind_speeds[i] / 3.6
-            wind_str = f"{wind_ms:4.1f}"
-        
-        weather_str = f"{hour:02d}h {rain_str:>3} | {wind_str:>4}"
-        draw.text((right_x + 5, right_y), weather_str, font=font_small, fill=TEXT_COLOR)
-        
-        left_y += 16
-        right_y += 16
-        
-        # Stop if we run out of space
-        if left_y > SCREEN_HEIGHT - 50:
-            break
-    
-    # Vertical separator line
-    separator_x = SCREEN_WIDTH // 2
-    draw.line([(separator_x, y), (separator_x, SCREEN_HEIGHT - 30)], fill=(100, 100, 100), width=1)
+        right_y += bar_height + 2
     
     # Update info at bottom
     update_str = f"Updated: {weather_data.get('last_update', '--')}"
     bbox = draw.textbbox((0, 0), update_str, font=font_tiny)
     x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
-    draw.text((x, SCREEN_HEIGHT - 20), update_str, font=font_tiny, fill=(100, 100, 100))
+    draw.text((x, SCREEN_HEIGHT - 15), update_str, 
+             font=font_tiny, fill=(100, 100, 100))
     
     return img
 
