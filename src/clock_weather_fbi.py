@@ -41,6 +41,15 @@ READ_TIMEOUT = 10
 WEATHER_UPDATE_INTERVAL = 600  # 10 minutes in seconds
 MAX_WEATHER_FAILURES = 5
 
+# Display configuration
+WEATHER_DISPLAY_TIME = 20  # seconds
+ADVISOR_DISPLAY_TIME = 10  # seconds
+TOTAL_CYCLE_TIME = WEATHER_DISPLAY_TIME + ADVISOR_DISPLAY_TIME
+
+# Joke API configuration
+JOKE_API_URL = "https://official-joke-api.appspot.com/random_joke"
+JOKE_UPDATE_INTERVAL = 1800  # 30 minutes in seconds
+
 # Display settings (landscape for FBI)
 SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
@@ -69,13 +78,159 @@ weather_data = {
     'description': 'Loading...',
     'humidity': '--',
     'wind_speed': '--',
+    'last_update': '',
+    'forecast': {}  # Will store hourly forecast data
+}
+
+# Clothing advisor data
+clothing_advice = {
+    'recommendation': 'Loading advice...',
+    'reason': 'Analyzing weather...',
     'last_update': ''
+}
+
+# Joke data
+joke_data = {
+    'setup': 'Loading joke...',
+    'punchline': '',
+    'last_update': 0
 }
 
 fbi_process = None
 running = True
 weather_failures = 0
 last_weather_update = 0
+last_joke_update = 0
+display_start_time = 0
+show_advisor_screen = False
+
+
+def analyze_forecast(hourly_data):
+    """Analyze hourly forecast data for clothing recommendations"""
+    if not hourly_data:
+        return {}
+    
+    temps = hourly_data.get('temperature_2m', [])
+    precip = hourly_data.get('precipitation_probability', [])
+    codes = hourly_data.get('weather_code', [])
+    
+    # Analyze next 12 hours (or available data)
+    analysis_hours = min(12, len(temps))
+    
+    analysis = {
+        'temp_range': (min(temps[:analysis_hours]),
+                       max(temps[:analysis_hours])) if temps else (0, 0),
+        'rain_chance': max(precip[:analysis_hours]) if precip else 0,
+        'rain_hours': sum(1 for p in precip[:analysis_hours]
+                          if p > 30) if precip else 0,
+        'weather_codes': codes[:analysis_hours] if codes else []
+    }
+    
+    return analysis
+
+
+def update_clothing_advice():
+    """Generate clothing recommendations based on weather forecast"""
+    global clothing_advice
+    
+    forecast = weather_data.get('forecast', {})
+    current_temp = float(weather_data.get('temperature', 0) or 0)
+    
+    if not forecast:
+        clothing_advice = {
+            'recommendation': 'Check weather manually',
+            'reason': 'Weather forecast unavailable',
+            'last_update': datetime.now().strftime("%H:%M")
+        }
+        return
+    
+    temp_min, temp_max = forecast.get('temp_range',
+                                       (current_temp, current_temp))
+    rain_chance = forecast.get('rain_chance', 0)
+    rain_hours = forecast.get('rain_hours', 0)
+    
+    # Generate recommendation based on conditions
+    recommendations = []
+    reasons = []
+    
+    # Temperature recommendations
+    if temp_max > 25:
+        recommendations.append("Light clothing")
+        reasons.append(f"High of {temp_max:.0f}°C")
+    elif temp_max > 15:
+        recommendations.append("Light jacket")
+        reasons.append(f"Mild weather ({temp_max:.0f}°C)")
+    elif temp_max > 5:
+        recommendations.append("Warm jacket")
+        reasons.append(f"Cool weather ({temp_max:.0f}°C)")
+    else:
+        recommendations.append("Winter coat")
+        reasons.append(f"Cold weather ({temp_max:.0f}°C)")
+    
+    # Rain recommendations
+    if rain_chance > 70 or rain_hours >= 3:
+        recommendations.append("Raincoat + umbrella")
+        reasons.append(f"{rain_chance}% rain chance")
+    elif rain_chance > 40:
+        recommendations.append("Umbrella")
+        reasons.append(f"{rain_chance}% rain chance")
+    
+    # Wind recommendations
+    wind_speed = weather_data.get('wind_speed', '--')
+    if wind_speed != '--' and float(wind_speed) > 8:
+        recommendations.append("Windproof layer")
+        reasons.append(f"Windy ({wind_speed} m/s)")
+    
+    # Temperature change recommendations
+    temp_diff = temp_max - temp_min
+    if temp_diff > 10:
+        recommendations.append("Layers for temp changes")
+        reasons.append(f"{temp_diff:.0f}°C temperature swing")
+    
+    clothing_advice = {
+        'recommendation': (" • ".join(recommendations[:3])
+                          if recommendations else "Dress comfortably"),
+        'reason': (" • ".join(reasons[:2])
+                  if reasons else "Normal weather conditions"),
+        'last_update': datetime.now().strftime("%H:%M")
+    }
+
+
+def fetch_joke():
+    """Fetch a random joke from the internet"""
+    global joke_data, last_joke_update
+    
+    try:
+        logger.info("Fetching joke...")
+        response = session.get(
+            JOKE_API_URL,
+            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        joke_data = {
+            'setup': data.get('setup', 'Why did the weather app break?'),
+            'punchline': data.get('punchline',
+                                 'It had too many cloud storage issues!'),
+            'last_update': time.time()
+        }
+        
+        # Update the global last_joke_update timestamp
+        last_joke_update = time.time()
+        
+        logger.info("Joke fetched successfully")
+        
+    except Exception as e:
+        logger.warning(f"Failed to fetch joke: {e}")
+        # Use a fallback weather-related joke
+        joke_data = {
+            'setup': 'What do you call a grumpy meteorologist?',
+            'punchline': 'A person with a stormy disposition!',
+            'last_update': time.time()
+        }
+        # Still update the timestamp even for fallback
+        last_joke_update = time.time()
 
 
 def fetch_weather():
@@ -90,7 +245,11 @@ def fetch_weather():
             params={
                 'latitude': LATITUDE,
                 'longitude': LONGITUDE,
-                'current': 'temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
+                'current': ('temperature_2m,relative_humidity_2m,'
+                           'wind_speed_10m,weather_code'),
+                'hourly': ('temperature_2m,precipitation_probability,'
+                          'weather_code'),
+                'forecast_days': 1,
                 'timezone': 'Europe/Oslo'
             },
             timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
@@ -98,15 +257,18 @@ def fetch_weather():
         response.raise_for_status()
         data = response.json()
         current = data.get('current', {})
+        hourly = data.get('hourly', {})
         
         # Weather code descriptions
         codes = {
-            0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
-            45: 'Foggy', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 
-            55: 'Dense drizzle', 61: 'Slight rain', 63: 'Rain', 65: 'Heavy rain',
-            71: 'Slight snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
-            80: 'Rain showers', 81: 'Rain showers', 82: 'Heavy rain showers',
-            85: 'Snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm',
+            0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy',
+            3: 'Overcast', 45: 'Foggy', 48: 'Rime fog',
+            51: 'Light drizzle', 53: 'Drizzle', 55: 'Dense drizzle',
+            61: 'Slight rain', 63: 'Rain', 65: 'Heavy rain',
+            71: 'Slight snow', 73: 'Snow', 75: 'Heavy snow',
+            77: 'Snow grains', 80: 'Rain showers', 81: 'Rain showers',
+            82: 'Heavy rain showers', 85: 'Snow showers',
+            86: 'Heavy snow showers', 95: 'Thunderstorm',
             96: 'Thunderstorm + hail', 99: 'Heavy thunderstorm'
         }
         
@@ -116,17 +278,25 @@ def fetch_weather():
         wind_kmh = current.get('wind_speed_10m', 0)
         wind_ms = round(wind_kmh / 3.6, 1) if wind_kmh != 0 else '--'
         
+        # Analyze forecast for clothing recommendations
+        forecast_analysis = analyze_forecast(hourly)
+        
         weather_data = {
             'temperature': f"{current.get('temperature_2m', '--')}",
             'description': codes.get(weather_code, 'Unknown'),
             'humidity': f"{current.get('relative_humidity_2m', '--')}",
             'wind_speed': f"{wind_ms}",
-            'last_update': datetime.now().strftime("%H:%M")
+            'last_update': datetime.now().strftime("%H:%M"),
+            'forecast': forecast_analysis
         }
         
         # Reset failure counter and update timestamp
         weather_failures = 0
         last_weather_update = time.time()
+        
+        # Update clothing advice based on new weather data
+        update_clothing_advice()
+        
         logger.info("Weather data fetched successfully")
         
     except requests.exceptions.Timeout as e:
@@ -221,6 +391,168 @@ def create_display_image():
     return img
 
 
+def create_advisor_image():
+    """Create the clothing advisor display image with joke"""
+    img = Image.new('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+        font_text = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+        font_joke = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    except:
+        font_title = font_text = font_small = font_joke = ImageFont.load_default()
+    
+    y = 20
+    
+    # Title
+    title = "What to Wear Today"
+    bbox = draw.textbbox((0, 0), title, font=font_title)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, y), title, font=font_title, fill=ACCENT_COLOR)
+    y += bbox[3] - bbox[1] + 20
+    
+    # Separator
+    draw.line([(30, y), (SCREEN_WIDTH - 30, y)], fill=ACCENT_COLOR, width=2)
+    y += 25
+    
+    # Clothing recommendation
+    recommendation = clothing_advice['recommendation']
+    # Wrap text for better display
+    words = recommendation.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font_text)
+        if bbox[2] - bbox[0] > SCREEN_WIDTH - 40:  # Leave 20px margin on each side
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                lines.append(word)
+        else:
+            current_line.append(word)
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    # Draw recommendation lines
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font_text)
+        x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y), line, font=font_text, fill=TEXT_COLOR)
+        y += bbox[3] - bbox[1] + 8
+    
+    y += 10
+    
+    # Reason
+    reason_text = f"Because: {clothing_advice['reason']}"
+    words = reason_text.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font_small)
+        if bbox[2] - bbox[0] > SCREEN_WIDTH - 40:
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                lines.append(word)
+        else:
+            current_line.append(word)
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font_small)
+        x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y), line, font=font_small, fill=(150, 150, 150))
+        y += bbox[3] - bbox[1] + 6
+    
+    y += 30
+    
+    # Separator for joke section
+    draw.line([(30, y), (SCREEN_WIDTH - 30, y)], fill=(100, 100, 100), width=1)
+    y += 20
+    
+    # Joke section
+    joke_title = "😄 Daily Smile"
+    bbox = draw.textbbox((0, 0), joke_title, font=font_text)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, y), joke_title, font=font_text, fill=ACCENT_COLOR)
+    y += bbox[3] - bbox[1] + 15
+    
+    # Joke setup
+    setup = joke_data['setup']
+    words = setup.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font_joke)
+        if bbox[2] - bbox[0] > SCREEN_WIDTH - 40:
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                lines.append(word)
+        else:
+            current_line.append(word)
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font_joke)
+        x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y), line, font=font_joke, fill=TEXT_COLOR)
+        y += bbox[3] - bbox[1] + 6
+    
+    y += 8
+    
+    # Joke punchline
+    punchline = joke_data['punchline']
+    words = punchline.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font_joke)
+        if bbox[2] - bbox[0] > SCREEN_WIDTH - 40:
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                lines.append(word)
+        else:
+            current_line.append(word)
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font_joke)
+        x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+        draw.text((x, y), line, font=font_joke, fill=(200, 200, 200))
+        y += bbox[3] - bbox[1] + 6
+    
+    # Update info at bottom
+    update_str = f"Advice: {clothing_advice['last_update']}"
+    bbox = draw.textbbox((0, 0), update_str, font=font_small)
+    x = (SCREEN_WIDTH - (bbox[2] - bbox[0])) // 2
+    draw.text((x, SCREEN_HEIGHT - 25), update_str, font=font_small, fill=(100, 100, 100))
+    
+    return img
+
+
 def display_image(img, filename='/tmp/clock_display.png'):
     """Display image using fbi with proper error handling"""
     global fbi_process
@@ -303,6 +635,18 @@ def cleanup(signum=None, frame=None):
     sys.exit(0)
 
 
+def should_update_joke():
+    """Check if joke should be updated"""
+    current_time = time.time()
+    time_since_last = current_time - last_joke_update
+    
+    # Update joke every 30 minutes, or if it's the first time
+    if last_joke_update == 0 or time_since_last >= JOKE_UPDATE_INTERVAL:
+        return True
+    
+    return False
+
+
 def should_update_weather():
     """Check if weather should be updated"""
     current_time = time.time()
@@ -336,7 +680,7 @@ def ensure_fbi_available():
 
 def main():
     """Main function with proper error handling and resource management"""
-    global running
+    global running, display_start_time, show_advisor_screen, last_joke_update
     
     try:
         logger.info("Starting Clock Weather FBI Application")
@@ -360,24 +704,54 @@ def main():
         logger.info("Fetching initial weather data...")
         fetch_weather()
         
+        # Initial joke fetch
+        logger.info("Fetching initial joke...")
+        fetch_joke()
+        
+        # Initialize display timing
+        display_start_time = time.time()
+        show_advisor_screen = False
+        
         logger.info("Starting main display loop...")
         
         while running:
             try:
+                current_time = time.time()
+                
                 # Update weather if needed
                 if should_update_weather():
                     logger.info("Updating weather data...")
                     fetch_weather()
                 
-                # Create and display image
-                img = create_display_image()
+                # Update joke if needed
+                if should_update_joke():
+                    logger.info("Updating joke...")
+                    fetch_joke()
+                
+                # Determine which screen to show based on timing
+                time_in_cycle = ((current_time - display_start_time) %
+                                 TOTAL_CYCLE_TIME)
+                
+                if time_in_cycle < WEATHER_DISPLAY_TIME:
+                    # Show weather screen
+                    if show_advisor_screen:
+                        show_advisor_screen = False
+                        logger.debug("Switching to weather display")
+                    img = create_display_image()
+                else:
+                    # Show advisor screen
+                    if not show_advisor_screen:
+                        show_advisor_screen = True
+                        logger.debug("Switching to advisor display")
+                    img = create_advisor_image()
+                
                 if not display_image(img):
                     logger.warning("Failed to display image, retrying...")
                     time.sleep(2)
                     continue
                 
-                # Wait 30 seconds to reduce flickering
-                time.sleep(30)
+                # Sleep for a short time to avoid excessive updates
+                time.sleep(1)
                 
             except KeyboardInterrupt:
                 logger.info("Interrupted by user")
